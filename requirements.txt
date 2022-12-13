@@ -1,0 +1,5 @@
+aiohttp
+asyncpg
+bcrypt
+SQLAlchemy
+python-dotenv
