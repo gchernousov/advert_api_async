@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+
+  postgres_db:
+    container_name: advert_async_api_test_database
+    image: postgres:14.6-alpine3.16
+    ports:
+      - "5500:5432"
+    environment:
+      POSTGRES_DB: adverts_api_db_1
+      POSTGRES_USER: adv_admin
+      POSTGRES_PASSWORD: qwerty123
