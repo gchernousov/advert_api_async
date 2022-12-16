@@ -8,7 +8,7 @@ from models import Base, UserModel
 from auth import hash_password, check_password
 from config import PG_DSN
 
-print(f'>>>> in app.py :: {PG_DSN}')
+
 engine = create_async_engine(PG_DSN)
 Session = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -34,7 +34,10 @@ def http_error(error_class, message):
 
 
 async def get_item(item_class, item_id, session):
-    pass
+    item = await session.get(item_class, item_id)
+    if item is None:
+        raise http_error(web.HTTPNotFound, f'{item_class.__name__} is not found')
+    return item
 
 
 # views
@@ -43,12 +46,10 @@ class UserView(web.View):
 
     async def get(self):
         user_id = int(self.request.match_info['user_id'])
-        user = await self.request['session'].get(UserModel, user_id)
-        if user is None:
-            raise http_error(web.HTTPNotFound, 'user is not found')
+        user = await get_item(UserModel, user_id, self.request['session'])
         return web.json_response({'id': user.id, 'name': user.name,
                                   'email': user.email, 'registration': str(user.registration_date),
-                                  'advertisement': user.advertisement})
+                                  'advertisements': user.advertisement})
 
     async def post(self):
         user_data = await self.request.json()
@@ -71,9 +72,9 @@ async def app_context(app: web.Application):
             await session.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
             await session.commit()
         await connect.run_sync(Base.metadata.create_all)
-    print('------START------')
+    print('------ APP START ------')
     yield
-    print('------STOP------')
+    print('------ APP STOP ------')
     await engine.dispose()
 
 

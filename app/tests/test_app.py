@@ -21,4 +21,4 @@ def test_get_user(root_user):
     user = get_user(root_user['id'])
     assert user == {'id': root_user['id'], 'name': root_user['name'],
                     'email': root_user['email'], 'registration': root_user['registration_date'],
-                    'advertisement': root_user['advertisement']}
+                    'advertisements': root_user['advertisements']}

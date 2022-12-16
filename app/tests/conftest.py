@@ -29,7 +29,7 @@ def create_default_user(name: str, password: str, email: str):
         user_data = {'id': new_user.id, 'name': new_user.name,
                      'password': new_user.password, 'email': new_user.email,
                      'registration_date': str(new_user.registration_date),
-                     'advertisement': new_user.advertisement}
+                     'advertisements': new_user.advertisement}
         return user_data
 
 
