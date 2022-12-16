@@ -2,9 +2,10 @@ import json
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.future import select
 from typing import Callable, Awaitable
 
-from models import Base, UserModel
+from models import Base, UserModel, TokenModel
 from auth import hash_password, check_password
 from config import PG_DSN
 
@@ -41,6 +42,24 @@ async def get_item(item_class, item_id, session):
 
 
 # views
+
+async def login(request: web.Request):
+    data = await request.json()
+    if 'name' in data.keys() and 'password' in data.keys():
+        query = select(UserModel).where(UserModel.name == data['name'])
+        result = await request['session'].execute(query)
+        user = result.scalar()
+        if user is None:
+            raise http_error(web.HTTPNotFound, 'user does not exist')
+        if check_password(data['password'], user.password) is False:
+            raise http_error(web.HTTPUnauthorized, 'password is incorrect')
+        token = TokenModel(user=user)
+        request['session'].add(token)
+        await request['session'].commit()
+        return web.json_response({'token': str(token.id)})
+    else:
+        raise http_error(web.HTTPBadRequest, 'name or password is missing')
+
 
 class UserView(web.View):
 
@@ -84,6 +103,7 @@ async def start_app():
 
     app.add_routes(
         [
+            web.post('/login/', login),
             web.get("/users/{user_id:\d+}", UserView),
             web.post("/users/", UserView)
         ]
