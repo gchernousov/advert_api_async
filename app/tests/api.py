@@ -1,10 +1,11 @@
-from typing import Literal
 import requests
 from .config import API_URL
 
 
-# def base_request(method: Literal["get", "post", "patch", "delete"], path: str, *args, **kwargs):
-#     print(f'>>> request to URL :: {API_URL}{path}')
+def login(name: str, password: str):
+    url = f'{API_URL}/login/'
+    token = requests.post(url, json={'name': name, 'password': password})
+    return token
 
 
 def get_user(user_id: int):
