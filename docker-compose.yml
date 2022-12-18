@@ -1,9 +1,11 @@
 version: "3.9"
 
+networks:
+  netology:
+
 services:
 
   postgres_db:
-    container_name: advert_async_api_test_database
     image: postgres:14.6-alpine3.16
     ports:
       - "5500:5432"
@@ -11,3 +13,50 @@ services:
       POSTGRES_DB: adverts_api_db_1
       POSTGRES_USER: adv_admin
       POSTGRES_PASSWORD: qwerty123
+    networks:
+      netology:
+        aliases:
+          - postgre_db
+
+  app:
+    build:
+      context: ./app
+    environment:
+      PG_DB: ${PG_DB}
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      PG_HOST: ${PG_HOST}
+      PG_PORT: ${PG_PORT}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres_db
+    volumes:
+      - ./app:/app
+    networks:
+      netology:
+        aliases:
+          - api
+
+  tests:
+    build:
+      context: ./app
+      dockerfile: Dockerfile.tests
+    environment:
+      API_URL: ${API_URL}
+      PG_DB: ${PG_DB}
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      PG_HOST: ${PG_HOST}
+      PG_PORT: ${PG_PORT}
+    depends_on:
+      - postgres_db
+      - app
+    working_dir: /app
+    entrypoint: pytest -v -s
+    networks:
+      netology:
+        aliases:
+          - test_client
+    volumes:
+      - ./app/:/app
