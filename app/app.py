@@ -116,7 +116,7 @@ class UserView(web.View):
     async def patch(self):
         user_object_id = int(self.request.match_info['user_id'])
         user_id = await authentication(self.request.headers, self.request['session'])
-        user_object = check_user_owner(user_id, user_object_id, self.request['session'])
+        user_object = await check_user_owner(user_id, user_object_id, self.request['session'])
         user_data = await self.request.json()
         if 'password' in user_data.keys():
             user_data['password'] = hash_password(user_data['password'])
@@ -129,7 +129,7 @@ class UserView(web.View):
     async def delete(self):
         user_object_id = int(self.request.match_info['user_id'])
         user_id = await authentication(self.request.headers, self.request['session'])
-        user_object = check_user_owner(user_id, user_object_id, self.request['session'])
+        user_object = await check_user_owner(user_id, user_object_id, self.request['session'])
         await self.request['session'].delete(user_object)
         await self.request['session'].commit()
         return web.json_response({'status': 'user is delete'})
@@ -197,6 +197,7 @@ async def start_app():
             web.get('/users/{user_id:\d+}', UserView),
             web.post('/users/', UserView),
             web.patch('/users/{user_id:\d+}', UserView),
+            web.delete('/users/{user_id:\d+}', UserView),
             web.get('/advertisements/{adv_id:\d+}', AdvertisementView),
             web.post('/advertisements/', AdvertisementView),
             web.patch('/advertisements/{adv_id:\d+}', AdvertisementView),
