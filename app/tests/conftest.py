@@ -1,10 +1,12 @@
 import pytest
+import time
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.config import PG_DB, PG_USER, PG_PASSWORD, PG_HOST, PG_PORT
 from app.models import Base, UserModel
 from app.auth import hash_password
+from .config import DEFAULT_PASSWORD
 
 
 PG_DSN = f'postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DB}'
@@ -20,14 +22,14 @@ def init_database():
     engine.dispose()
 
 
-def create_user(name: str, password: str, email: str):
+def create_user(name: str, password: str, email: str = None):
     with Session() as session:
         password = hash_password(password)
         user = UserModel(name=name, password=password, email=email)
-        session.add(new_user)
+        session.add(user)
         session.commit()
-        user_data = {'id': user.id, 'name': user.name,
-                     'password': user.password, 'email': user.email,
+        user_data = {'id': user.id, 'name': name,
+                     'password': password, 'email': email,
                      'registration_date': str(user.registration_date),
                      'advertisements': user.advertisement}
         return user_data
@@ -41,5 +43,6 @@ def root_user():
 
 @pytest.fixture()
 def new_user():
-    user = create_user('new_user', 'qwerty123', 'newuser@mail.ru')
+    username = f'new_user_{time.time()}'
+    user = create_user(username, DEFAULT_PASSWORD)
     return user
