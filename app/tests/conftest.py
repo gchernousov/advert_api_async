@@ -20,20 +20,26 @@ def init_database():
     engine.dispose()
 
 
-def create_default_user(name: str, password: str, email: str):
+def create_user(name: str, password: str, email: str):
     with Session() as session:
         password = hash_password(password)
-        new_user = UserModel(name=name, password=password, email=email)
+        user = UserModel(name=name, password=password, email=email)
         session.add(new_user)
         session.commit()
-        user_data = {'id': new_user.id, 'name': new_user.name,
-                     'password': new_user.password, 'email': new_user.email,
-                     'registration_date': str(new_user.registration_date),
-                     'advertisements': new_user.advertisement}
+        user_data = {'id': user.id, 'name': user.name,
+                     'password': user.password, 'email': user.email,
+                     'registration_date': str(user.registration_date),
+                     'advertisements': user.advertisement}
         return user_data
 
 
 @pytest.fixture(scope='session', autouse=True)
 def root_user():
-    root_user = create_default_user('root_user', 'root_password', 'rootemail@mail.com')
+    root_user = create_user('root_user', 'root_password', 'rootemail@mail.com')
     return root_user
+
+
+@pytest.fixture()
+def new_user():
+    user = create_user('new_user', 'qwerty123', 'newuser@mail.ru')
+    return user
