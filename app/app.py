@@ -1,4 +1,5 @@
 import json
+import datetime
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -8,7 +9,7 @@ from typing import Callable, Awaitable
 
 from models import Base, UserModel, TokenModel, AdvertisementModel
 from auth import hash_password, check_password
-from config import PG_DSN
+from config import PG_DSN, TOKEN_TTL
 
 
 engine = create_async_engine(PG_DSN)
@@ -43,10 +44,34 @@ async def get_item(item_class, item_id, session):
     try:
         item = await session.get(item_class, item_id)
     except StatementError:
-        raise http_error(web.HTTPForbidden, 'incorrect token format')
+        raise http_error(web.HTTPForbidden, f'incorrect format of {item_class.__name__}')
     if item is None:
         raise http_error(web.HTTPNotFound, f'{item_class.__name__} is not found')
     return item
+
+
+async def authentication(headers, session):
+    token = headers.get('Token')
+    if token is None:
+        raise http_error(web.HTTPForbidden, 'need Token for this request')
+    token = await get_item(TokenModel, token, session)
+    if token.creation_time + datetime.timedelta(seconds=TOKEN_TTL) <= datetime.datetime.now():
+        raise http_error(web.HTTPForbidden, 'token is expired')
+    return token.user_id
+
+
+async def check_user_owner(user_id, user_object_id, session):
+    user_object = await get_item(UserModel, user_object_id, session)
+    if user_object.id != user_id:
+        raise http_error(web.HTTPUnauthorized, 'permission denied')
+    return user_object
+
+
+async def check_advertisement_owner(user_id, adv_id, session):
+    advertisement = await get_item(AdvertisementModel, adv_id, session)
+    if advertisement.user_id != user_id:
+        raise http_error(web.HTTPUnauthorized, 'permission denied')
+    return advertisement
 
 
 async def login(request: web.Request):
@@ -67,23 +92,6 @@ async def login(request: web.Request):
         raise http_error(web.HTTPBadRequest, 'name or password is missing')
 
 
-async def authentication(headers, session):
-    token = headers.get('Token')
-    if token is None:
-        raise http_error(web.HTTPForbidden, 'need Token for this request')
-    else:
-        token = await get_item(TokenModel, token, session)
-        # проверка на время действия токена
-        return token.user_id
-
-
-async def check_owner(user_id, advert_id, session):
-    advertisement = await get_item(AdvertisementModel, advert_id, session)
-    if advertisement.user_id != user_id:
-        raise http_error(web.HTTPUnauthorized, 'permission denied')
-    return advertisement
-
-
 class UserView(web.View):
 
     async def get(self):
@@ -96,53 +104,77 @@ class UserView(web.View):
 
     async def post(self):
         user_data = await self.request.json()
-        user_data['password'] = hash_password(user_data['password'])
-        new_user = UserModel(**user_data)
-        self.request['session'].add(new_user)
+        if 'name' in user_data.keys() and 'password' in user_data.keys():
+            user_data['password'] = hash_password(user_data['password'])
+            new_user = UserModel(**user_data)
+            self.request['session'].add(new_user)
+            await self.request['session'].commit()
+            return web.json_response({'id': new_user.id})
+        else:
+            raise http_error(web.HTTPBadRequest, 'name or password is missing')
+
+    async def patch(self):
+        user_object_id = int(self.request.match_info['user_id'])
+        user_id = await authentication(self.request.headers, self.request['session'])
+        user_object = check_user_owner(user_id, user_object_id, self.request['session'])
+        user_data = await self.request.json()
+        if 'password' in user_data.keys():
+            user_data['password'] = hash_password(user_data['password'])
+        for field, value in user_data.items():
+            setattr(user_object, field, value)
+        self.request['session'].add(user_object)
         await self.request['session'].commit()
-        return web.json_response({'id': new_user.id})
+        return web.json_response({'status': 'user is changed'})
+
+    async def delete(self):
+        user_object_id = int(self.request.match_info['user_id'])
+        user_id = await authentication(self.request.headers, self.request['session'])
+        user_object = check_user_owner(user_id, user_object_id, self.request['session'])
+        await self.request['session'].delete(user_object)
+        await self.request['session'].commit()
+        return web.json_response({'status': 'user is delete'})
 
 
 class AdvertisementView(web.View):
 
-     async def get(self):
-         adv_id = int(self.request.match_info['adv_id'])
-         advertisement = await get_item(AdvertisementModel, adv_id, self.request['session'])
-         return web.json_response({'id': advertisement.id, 'title': advertisement.title,
-                                   'description': advertisement.description,
-                                   'created': str(advertisement.created),
-                                   'user id': advertisement.user_id})
+    async def get(self):
+        adv_id = int(self.request.match_info['adv_id'])
+        advertisement = await get_item(AdvertisementModel, adv_id, self.request['session'])
+        return web.json_response({'id': advertisement.id, 'title': advertisement.title,
+                                  'description': advertisement.description,
+                                  'created': str(advertisement.created),
+                                  'user id': advertisement.user_id})
 
-     async def post(self):
-         user_id = await authentication(self.request.headers, self.request['session'])
-         adv_data = await self.request.json()
-         if 'title' in adv_data.keys() and 'description' in adv_data.keys():
+    async def post(self):
+        user_id = await authentication(self.request.headers, self.request['session'])
+        adv_data = await self.request.json()
+        if 'title' in adv_data.keys() and 'description' in adv_data.keys():
             adv_data['user_id'] = user_id
             new_advertisement = AdvertisementModel(**adv_data)
             self.request['session'].add(new_advertisement)
             await self.request['session'].commit()
             return web.json_response({'id': new_advertisement.id})
-         else:
+        else:
             raise http_error(web.HTTPBadRequest, 'title or description is missing')
 
-     async def patch(self):
-         user_id = await authentication(self.request.headers, self.request['session'])
-         adv_id = int(self.request.match_info['adv_id'])
-         advertisement = await check_owner(user_id, adv_id, self.request['session'])
-         new_data = await self.request.json()
-         for field, value in new_data.items():
-             setattr(advertisement, field, value)
-         self.request['session'].add(advertisement)
-         await self.request['session'].commit()
-         return web.json_response({'status': 'advertisement is changed'})
+    async def patch(self):
+        user_id = await authentication(self.request.headers, self.request['session'])
+        adv_id = int(self.request.match_info['adv_id'])
+        advertisement = await check_advertisement_owner(user_id, adv_id, self.request['session'])
+        new_data = await self.request.json()
+        for field, value in new_data.items():
+            setattr(advertisement, field, value)
+        self.request['session'].add(advertisement)
+        await self.request['session'].commit()
+        return web.json_response({'status': 'advertisement is changed'})
 
-     async def delete(self):
-         user_id = await authentication(self.request.headers, self.request['session'])
-         adv_id = int(self.request.match_info['adv_id'])
-         advertisement = await check_owner(user_id, adv_id, self.request['session'])
-         await self.request['session'].delete(advertisement)
-         await self.request['session'].commit()
-         return web.json_response({'status': 'advertisement is delete'})
+    async def delete(self):
+        user_id = await authentication(self.request.headers, self.request['session'])
+        adv_id = int(self.request.match_info['adv_id'])
+        advertisement = await check_advertisement_owner(user_id, adv_id, self.request['session'])
+        await self.request['session'].delete(advertisement)
+        await self.request['session'].commit()
+        return web.json_response({'status': 'advertisement is delete'})
 
 
 async def app_context(app: web.Application):
@@ -164,6 +196,7 @@ async def start_app():
             web.post('/login/', login),
             web.get('/users/{user_id:\d+}', UserView),
             web.post('/users/', UserView),
+            web.patch('/users/{user_id:\d+}', UserView),
             web.get('/advertisements/{adv_id:\d+}', AdvertisementView),
             web.post('/advertisements/', AdvertisementView),
             web.patch('/advertisements/{adv_id:\d+}', AdvertisementView),

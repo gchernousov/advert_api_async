@@ -14,7 +14,7 @@ class UserModel(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(64), unique=True, nullable=False)
     password = Column(String(60), nullable=False)
-    email = Column(String, unique=True, nullable=False)
+    email = Column(String, unique=True)
     registration_date = Column(Date, server_default=func.now())
     advertisement = relationship("AdvertisementModel", lazy="joined")
 
